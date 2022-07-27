@@ -36,7 +36,11 @@ type Connection struct {
 	UserData   interface{}
 }
 
-func NewConnection(host string, handler ConnectionHandler) (*Connection, error) {
+func NewConnection(host, password string, handler ConnectionHandler) (*Connection, error) {
+	if strings.TrimSpace(password) == "" {
+		password = "ClueCon"
+	}
+
 	con := Connection{
 		Address:  host,
 		Password: "ClueCon",
