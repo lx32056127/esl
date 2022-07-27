@@ -42,7 +42,7 @@ const (
 
 func main() {
         handler := &Handler{}
-        con, err := esl.NewConnection("127.0.0.1:8021", handler)
+        con, err := esl.NewConnection("127.0.0.1:8021", "ClueCon", handler)
         if err != nil {
                 log.Fatal("ERR connecting to freeswitch:", err)
         }
