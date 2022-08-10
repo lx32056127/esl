@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,6 +35,7 @@ type Connection struct {
 	MaxRetries int
 	Timeout    time.Duration
 	UserData   interface{}
+	Mutex      sync.Mutex
 }
 
 func NewConnection(host, password string, handler ConnectionHandler) (*Connection, error) {
@@ -58,6 +60,8 @@ func NewConnection(host, password string, handler ConnectionHandler) (*Connectio
 }
 
 func (con *Connection) SendRecv(cmd string, args ...string) (*Event, error) {
+	con.Mutex.Lock()
+	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString(cmd)
 	for _, arg := range args {
 		buf.WriteString(" ")
@@ -76,6 +80,24 @@ func (con *Connection) SendRecv(cmd string, args ...string) (*Event, error) {
 	return ev, nil
 }
 
+func (con *Connection) Filter(event string) (*Event, error) {
+	con.Mutex.Lock()
+	defer con.Mutex.Unlock()
+	buf := bytes.NewBufferString("filter Event-Name ")
+	buf.WriteString(event)
+	buf.WriteString("\n\n")
+	_, err := con.Write(buf.Bytes())
+	if err != nil {
+		return nil, fmt.Errorf("filter event send bytes: %v", err)
+	}
+	ev := <-con.cmdReply
+	reply := ev.Get("Reply-Text")
+	if strings.HasPrefix(reply, "-ERR") {
+		return nil, fmt.Errorf("SendRecv filter event %s: %s", event, strings.TrimSpace(reply))
+	}
+	return ev, nil
+}
+
 func (con *Connection) MustSendRecv(cmd string, args ...string) *Event {
 	ev, err := con.SendRecv(cmd, args...)
 	if err != nil {
@@ -86,6 +108,8 @@ func (con *Connection) MustSendRecv(cmd string, args ...string) *Event {
 }
 
 func (con *Connection) SendEvent(cmd string, headers map[string]string, body []byte) (*Event, error) {
+	con.Mutex.Lock()
+	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString(fmt.Sprintf("sendevent %s\n", cmd))
 	for k, v := range headers {
 		buf.WriteString(fmt.Sprintf("%s: %s\n", k, v))
@@ -106,6 +130,8 @@ func (con *Connection) SendEvent(cmd string, headers map[string]string, body []b
 }
 
 func (con *Connection) Api(cmd string, args ...string) (string, error) {
+	con.Mutex.Lock()
+	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString("api " + cmd)
 	for _, arg := range args {
 		buf.WriteString(" ")
@@ -167,7 +193,7 @@ func (con *Connection) ConnectRetry(MaxRetries int) error {
 			break
 		}
 	}
-	con.buffer = bufio.NewReadWriter(bufio.NewReaderSize(con.socket, 16*1024),
+	con.buffer = bufio.NewReadWriter(bufio.NewReaderSize(con.socket, 16*1024*1024),
 		bufio.NewWriter(con.socket))
 	return con.Authenticate()
 }
