@@ -60,8 +60,6 @@ func NewConnection(host, password string, handler ConnectionHandler) (*Connectio
 }
 
 func (con *Connection) SendRecv(cmd string, args ...string) (*Event, error) {
-	con.Mutex.Lock()
-	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString(cmd)
 	for _, arg := range args {
 		buf.WriteString(" ")
@@ -81,8 +79,6 @@ func (con *Connection) SendRecv(cmd string, args ...string) (*Event, error) {
 }
 
 func (con *Connection) Filter(event string) (*Event, error) {
-	con.Mutex.Lock()
-	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString("filter Event-Name ")
 	buf.WriteString(event)
 	buf.WriteString("\n\n")
@@ -108,8 +104,6 @@ func (con *Connection) MustSendRecv(cmd string, args ...string) *Event {
 }
 
 func (con *Connection) SendEvent(cmd string, headers map[string]string, body []byte) (*Event, error) {
-	con.Mutex.Lock()
-	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString(fmt.Sprintf("sendevent %s\n", cmd))
 	for k, v := range headers {
 		buf.WriteString(fmt.Sprintf("%s: %s\n", k, v))
@@ -130,8 +124,6 @@ func (con *Connection) SendEvent(cmd string, headers map[string]string, body []b
 }
 
 func (con *Connection) Api(cmd string, args ...string) (string, error) {
-	con.Mutex.Lock()
-	defer con.Mutex.Unlock()
 	buf := bytes.NewBufferString("api " + cmd)
 	for _, arg := range args {
 		buf.WriteString(" ")
@@ -194,7 +186,7 @@ func (con *Connection) ConnectRetry(MaxRetries int) error {
 		}
 	}
 	con.buffer = bufio.NewReadWriter(bufio.NewReaderSize(con.socket, 16*1024*1024),
-		bufio.NewWriter(con.socket))
+		bufio.NewWriter(bufio.NewWriterSize(con.socket, 16*1024*1024)))
 	return con.Authenticate()
 }
 
@@ -256,8 +248,17 @@ func (con *Connection) HandleEvents() error {
 }
 
 func (con *Connection) Write(b []byte) (int, error) {
-	defer con.buffer.Flush()
-	return con.buffer.Write(b)
+	con.Mutex.Lock()
+	n, err := con.buffer.Write(b)
+	if err != nil {
+		return 0, err
+	}
+	err = con.buffer.Flush()
+	if err != nil {
+		return 0, err
+	}
+	con.Mutex.Unlock()
+	return n, nil
 }
 
 func (con *Connection) Close() {
