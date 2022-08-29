@@ -193,9 +193,11 @@ func (con *Connection) ConnectRetry(MaxRetries int) error {
 // Authenticate handles freeswitch esl authentication
 func (con *Connection) Authenticate() error {
 	ev, err := NewEventFromReader(con.buffer.Reader)
-	if err != nil || ev.Type != EventAuth {
+	if err != nil || (ev == nil && ev.Type != EventAuth) {
 		con.socket.Close()
-		if ev.Type != EventAuth {
+		if ev == nil {
+			return fmt.Errorf("auth ev is nil")
+		} else if ev != nil && ev.Type != EventAuth {
 			return fmt.Errorf("bad auth preamble: [%s]", ev.Header)
 		}
 		return fmt.Errorf("socket read error: %v", err)
